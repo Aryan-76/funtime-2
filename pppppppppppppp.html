@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Suraj Mobile Shop — Manager</title>
+
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- jsPDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- QRCode -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+
+<style>
+:root{ --bg:#f7fafc; --card:#fff; --muted:#6b7280; --accent:#4f46e5; --danger:#ef4444; }
+*{box-sizing:border-box}
+body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#0f172a;margin:0}
+.container{max-width:1100px;margin:28px auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:center;padding:10px 0}
+.brand{font-weight:700;font-size:1.25rem}
+.controls{display:flex;gap:8px;align-items:center}
+.btn{padding:8px 12px;border-radius:8px;border:none;cursor:pointer;font-weight:600}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-ghost{background:transparent;border:1px solid rgba(0,0,0,0.06)}
+.btn-danger{background:var(--danger);color:#fff}
+.grid{display:grid;grid-template-columns:1fr 350px;gap:16px}
+.card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 10px 25px rgba(2,6,23,0.05);margin-bottom:12px}
+.row{display:flex;gap:12px;align-items:center}
+.summary{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.summary .item{flex:1;min-width:150px;padding:12px;border-radius:10px;background:linear-gradient(180deg, rgba(79,70,229,0.03), rgba(79,70,229,0.01))}
+.label{font-size:0.85rem;color:var(--muted);margin-bottom:6px}
+.big{font-weight:700;font-size:1.15rem}
+.form-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+input,select{padding:10px;border-radius:8px;border:1px solid #e6eef6;flex:1}
+table{width:100%;border-collapse:collapse;margin-top:12px}
+th,td{padding:10px;border-bottom:1px solid #e6eef6;text-align:left;font-size:0.95rem}
+.no-records{text-align:center;padding:18px;color:var(--muted)}
+.pagination{display:flex;gap:6px;justify-content:center;padding:8px}
+.toast-wrap{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:8px;z-index:9999}
+.toast{background:#111827;color:#fff;padding:8px 12px;border-radius:8px;font-weight:700}
+.qr-canvas{width:56px;height:56px}
+@media (max-width:980px){ .grid{grid-template-columns:1fr} .controls{flex-wrap:wrap} }
+</style>
+</head>
+<body>
+<div class="container">
+<header>
+<div class="brand">Suraj Mobile Shop — Manager</div>
+<div class="controls">
+<button id="sync-now" class="btn btn-ghost">Sync Now</button>
+<button id="export-csv" class="btn btn-primary">Export CSV</button>
+<button id="clear-all" class="btn btn-danger">Clear All</button>
+</div>
+</header>
+
+<div class="summary">
+<div class="item card">
+<div class="label">Total Customers</div>
+<div class="big" id="total-customers">0</div>
+</div>
+<div class="item card">
+<div class="label">Total / Avg Revenue</div>
+<div class="big"><span id="total-cost">₹0</span> / <span id="avg-cost">₹0</span></div>
+</div>
+<div class="item card">
+<div class="label">Most Common Problem</div>
+<div class="big" id="common-problem">—</div>
+</div>
+</div>
+
+<div class="grid">
+<main>
+<div class="card">
+<form id="record-form" autocomplete="off">
+<div style="display:flex;justify-content:space-between;align-items:center">
+<div style="font-weight:700">Add / Edit Record</div>
+<div style="font-size:0.85rem;color:var(--muted)">Status: <span id="online-status">—</span></div>
+</div>
+
+<div class="form-row" style="margin-top:10px">
+<input id="customer-name" placeholder="Customer Name" required />
+<input id="phone-number" placeholder="Phone Number (10 digits)" maxlength="10" inputmode="numeric" />
+</div>
+
+<div class="form-row">
+<input id="phone-model" placeholder="Phone Model" />
+<input id="problem-desc" placeholder="Problem Description" />
+</div>
+
+<div class="form-row">
+<input id="part-cost" type="number" min="0" placeholder="Spare Part Cost (₹)" />
+<input id="service-cost" type="number" min="0" placeholder="Service Cost (₹)" />
+<select id="status">
+<option value="Pending">Pending</option>
+<option value="Completed">Completed</option>
+</select>
+</div>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+<div>
+<button type="submit" class="btn btn-primary">Save Record</button>
+<button type="reset" id="reset-btn" class="btn btn-ghost">Reset</button>
+<button type="button" id="export-single" class="btn btn-ghost">Export Invoice (PDF)</button>
+</div>
+<div style="text-align:right;color:var(--muted)">
+<div>Total: <span id="computed-total">₹0</span></div>
+<div style="font-size:0.85rem">Auto date & status stored</div>
+</div>
+</div>
+</form>
+</div>
+
+<div class="card">
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+<input id="search" placeholder="Search name / phone / model / problem" style="flex:1" />
+<input id="min-cost" placeholder="Min Cost" type="number" style="width:110px" />
+<input id="max-cost" placeholder="Max Cost" type="number" style="width:110px" />
+<select id="sort" style="width:140px">
+<option value="newest">Newest</option>
+<option value="oldest">Oldest</option>
+<option value="lowcost">Low Cost</option>
+<option value="highcost">High Cost</option>
+</select>
+</div>
+
+<div style="overflow:auto;margin-top:12px">
+<table>
+<thead>
+<tr><th>#</th><th>Name</th><th>Phone</th><th>Model</th><th>Problem</th><th>Cost</th><th>Date</th><th>Actions</th></tr>
+</thead>
+<tbody id="records-tbody">
+<tr><td colspan="8" class="no-records">No records yet.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="pagination" id="pagination"></div>
+</div>
+</main>
+
+<aside>
+<div class="card">
+<div style="font-weight:700">Quick Tools</div>
+<div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+<button id="export-all-pdf" class="btn btn-ghost">Export All Invoices (PDF)</button>
+<button id="whatsapp-bulk" class="btn btn-ghost">Open WhatsApp for Latest</button>
+<div style="margin-top:8px;color:var(--muted)">Local backup is kept automatically.</div>
+</div>
+</div>
+
+<div class="card">
+<div style="font-weight:700">Charts</div>
+<div style="margin-top:10px">
+<canvas id="revenueChart" style="height:160px"></canvas>
+</div>
+<div style="margin-top:12px">
+<canvas id="problemChart" style="height:160px"></canvas>
+</div>
+</div>
+</aside>
+</div>
+
+<footer style="text-align:center;margin-top:18px;color:var(--muted)">Built with Firestore + local fallback • Works on Mobile & Desktop</footer>
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script type="module">
+// ---------- FIREBASE SETUP ----------
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getFirestore, collection, addDoc, setDoc, doc, deleteDoc, onSnapshot, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBkjAsVxD2HgAVaznxfhLtTej2lh05Lb1w",
+  authDomain: "funtest-494bb.firebaseapp.com",
+  projectId: "funtest-494bb",
+  storageBucket: "funtest-494bb.appspot.com",
+  messagingSenderId: "390989797220",
+  appId: "1:390989797220:web:ab3934aae8bee6dc664c71",
+  measurementId: "G-3T941VC2ZJ"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+enableIndexedDbPersistence(db).catch(err => console.warn('Persistence failed:', err.code));
+
+// ---------- APP STATE ----------
+let records = JSON.parse(localStorage.getItem('suraj_records') || '[]');
+let editIndex = null;
+const pageSize = 6;
+let currentPage = 1;
+
+const elems = {
+  tbody: document.getElementById('records-tbody'),
+  totalCustomers: document.getElementById('total-customers'),
+  totalCost: document.getElementById('total-cost'),
+  avgCost: document.getElementById('avg-cost'),
+  commonProblem: document.getElementById('common-problem'),
+  form: document.getElementById('record-form'),
+  search: document.getElementById('search'),
+  minCost: document.getElementById('min-cost'),
+  maxCost: document.getElementById('max-cost'),
+  sort: document.getElementById('sort'),
+  pagination: document.getElementById('pagination'),
+  onlineStatus: document.getElementById('online-status')
+};
+
+// toast helper
+function toast(msg,t=3000){ const id='t'+Date.now(); const el=document.createElement('div'); el.className='toast'; el.id=id; el.innerText=msg; document.getElementById('toasts').appendChild(el); setTimeout(()=>el.remove(),t); }
+
+// save local backup
+function saveLocal(){ localStorage.setItem('suraj_records',JSON.stringify(records)); }
+
+// ---------- FIRESTORE HELPERS ----------
+const colRef = collection(db, 'customers');
+
+onSnapshot(colRef, snapshot => {
+  const remote = [];
+  snapshot.forEach(d=>{ const data=d.data(); data.id=d.id; remote.push(data); });
+
+  const localMap = {};
+  records.forEach(r=>{ if(r.id) localMap[r.id]=r; });
+
+  const merged = [];
+  remote.forEach(r=>{ merged.push(r); if(localMap[r.id]) delete localMap[r.id]; });
+  Object.values(localMap).forEach(r=>merged.push(r));
+
+  records = merged;
+  saveLocal();
+  updateSummary();
+  renderTable();
+  renderCharts();
+}, err => console.warn('Snapshot error', err));
+
+async function upsertToFirestore(r){
+  try { if(r.id){ await setDoc(doc(db,'customers',r.id), r); } else { const ref = await addDoc(colRef,r); r.id=ref.id; saveLocal(); } return true; }
+  catch(e){ console.warn('upsert failed', e); return false; }
+}
+
+async function deleteFromFirestore(r){
+  if(!r || !r.id) return;
+  try { await deleteDoc(doc(db,'customers',r.id)); return true; } 
+  catch(e){ console.warn('delete remote failed', e); return false; }
+}
+
+// ---------- UI LOGIC ----------
+function updateSummary(){
+  elems.totalCustomers.innerText = records.length;
+  const total = records.reduce((a,b)=>a+Number((b.part_cost||0)+(b.service_cost||0)),0);
+  elems.totalCost.innerText='₹'+total;
+  elems.avgCost.innerText='₹'+(records.length?Math.round(total/records.length):0);
+  const probs={}; records.forEach(r=>{ if(r.problem) probs[r.problem]=(probs[r.problem]||0)+1; });
+  const common = Object.entries(probs).sort((a,b)=>b[1]-a[1])[0];
+  elems.commonProblem.innerText = common?common[0]:'—';
+}
+
+function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderTable(){
+  let filtered=[...records];
+  const q=elems.search.value.trim().toLowerCase();
+  if(q) filtered=filtered.filter(r=>(r.name||'').toLowerCase().includes(q)||(r.phone||'').includes(q)||(r.model||'').toLowerCase().includes(q)||(r.problem||'').toLowerCase().includes(q));
+  const min=Number(elems.minCost.value)||0;
+  const max=Number(elems.maxCost.value)||Infinity;
+  filtered=filtered.filter(r=>{ const c=Number((r.part_cost||0)+(r.service_cost||0)); return c>=min && c<=max; });
+  const sort=elems.sort.value;
+  filtered.sort((a,b)=>{ if(sort==='newest') return new Date(b.date)-new Date(a.date); if(sort==='oldest') return new Date(a.date)-new Date(b.date); if(sort==='lowcost') return ((a.part_cost||0)+(a.service_cost||0))-((b.part_cost||0)+(b.service_cost||0)); if(sort==='highcost') return ((b.part_cost||0)+(b.service_cost||0))-((a.part_cost||0)+(a.service_cost||0)); });
+
+  const totalPages = Math.ceil(filtered.length/pageSize)||1;
+  if(currentPage>totalPages) currentPage=1;
+  const start=(currentPage-1)*pageSize;
+  const pageData=filtered.slice(start,start+pageSize);
+
+  elems.tbody.innerHTML=pageData.length? pageData.map((r,i)=>`
+    <tr>
+      <td>${start+i+1}</td>
+      <td>${escapeHtml(r.name)}</td>
+      <td>${escapeHtml(r.phone)}</td>
+      <td>${escapeHtml(r.model)}</td>
+      <td>${escapeHtml(r.problem)}</td>
+      <td>₹${(Number(r.part_cost||0)+Number(r.service_cost||0))}</td>
+      <td>${r.date||''}</td>
+      <td>
+        <button class="btn btn-ghost" onclick="editRecord(${start+i})">Edit</button>
+        <button class="btn btn-danger" onclick="removeRecord(${start+i})">Delete</button>
+      </td>
+    </tr>`).join(''):'<tr><td colspan="8" class="no-records">No matching records</td></tr>';
+
+  elems.pagination.innerHTML='';
+  for(let i=1;i<=totalPages;i++){
+    const b=document.createElement('button');
+    b.innerText=i; b.className='btn btn-ghost';
+    if(i===currentPage) b.style.backgroundColor='#e5e7eb';
+    b.onclick=()=>{currentPage=i; renderTable(); };
+    elems.pagination.appendChild(b);
+  }
+}
+
+function renderCharts(){
+  const ctx1=document.getElementById('revenueChart').getContext('2d');
+  const ctx2=document.getElementById('problemChart').getContext('2d');
+  if(window.revenueChart) window.revenueChart.destroy();
+  if(window.problemChart) window.problemChart.destroy();
+  window.revenueChart=new Chart(ctx1,{type:'bar',data:{labels:records.map(r=>r.name||'—'),datasets:[{label:'Revenue',data:records.map(r=>Number((r.part_cost||0)+(r.service_cost||0))),backgroundColor:'#4f46e5'}]},options:{responsive:true,plugins:{legend:{display:false}}}});
+  const probs={}; records.forEach(r=>{if(r.problem) probs[r.problem]=(probs[r.problem]||0)+1;});
+  window.problemChart=new Chart(ctx2,{type:'pie',data:{labels:Object.keys(probs),datasets:[{data:Object.values(probs),backgroundColor:['#4f46e5','#6366f1','#818cf8','#a5b4fc','#c7d2fe']}]}});
+}
+
+// ---------- ONLINE/OFFLINE & AUTO SYNC ----------
+function updateOnlineStatus(){
+  if(navigator.onLine){
+    elems.onlineStatus.innerText='Online';
+    elems.onlineStatus.style.color='#16a34a';
+    toast('Back Online',2000);
+    syncAllRecords();
+  } else {
+    elems.onlineStatus.innerText='Offline';
+    elems.onlineStatus.style.color='#ef4444';
+  }
+}
+setInterval(updateOnlineStatus,1000);
+updateOnlineStatus();
+
+async function syncAllRecords(){
+  for(const r of records){
+    if(!r.synced){
+      const success=await upsertToFirestore(r);
+      if(success) r.synced=true;
+    }
+  }
+  saveLocal();
+  renderTable();
+  renderCharts();
+}
+
+// ---------- CRUD ----------
+elems.form.addEventListener('submit', async e=>{
+  e.preventDefault();
+  const r={
+    name:elems.form['customer-name'].value.trim(),
+    phone:elems.form['phone-number'].value.trim(),
+    model:elems.form['phone-model'].value.trim(),
+    problem:elems.form['problem-desc'].value.trim(),
+    part_cost:Number(elems.form['part-cost'].value||0),
+    service_cost:Number(elems.form['service-cost'].value||0),
+    status:elems.form['status'].value,
+    date:new Date().toLocaleString(),
+    synced:false
+  };
+  if(editIndex!==null){ r.id=records[editIndex].id; records[editIndex]=r; editIndex=null; }
+  else records.push(r);
+
+  saveLocal();
+  renderTable();
+  updateSummary();
+  renderCharts();
+  elems.form.reset();
+  toast('Record saved');
+
+  if(navigator.onLine) syncAllRecords();
+});
+
+window.editRecord=i=>{
+  editIndex=i;
+  const r=records[i];
+  elems.form['customer-name'].value=r.name||'';
+  elems.form['phone-number'].value=r.phone||'';
+  elems.form['phone-model'].value=r.model||'';
+  elems.form['problem-desc'].value=r.problem||'';
+  elems.form['part-cost'].value=r.part_cost||0;
+  elems.form['service-cost'].value=r.service_cost||0;
+  elems.form['status'].value=r.status||'Pending';
+};
+
+window.removeRecord=async i=>{
+  const r=records[i];
+  if(confirm('Delete record?')){
+    records.splice(i,1);
+    saveLocal();
+    renderTable();
+    updateSummary();
+    renderCharts();
+    await deleteFromFirestore(r);
+    toast('Record deleted');
+  }
+};
+
+// ---------- INITIAL RENDER ----------
+updateSummary();
+renderTable();
+renderCharts();
+
+// ---------- SEARCH, FILTER, SORT ----------
+[elems.search,elems.minCost,elems.maxCost,elems.sort].forEach(el=>el.addEventListener('input',()=>renderTable()));
+
+// ---------- EXPORTS ----------
+document.getElementById('sync-now').addEventListener('click', async ()=>{
+  for(const r of records) await upsertToFirestore(r);
+  toast('Synced with Firestore');
+});
+document.getElementById('export-csv').addEventListener('click', ()=>{
+  let csv='Name,Phone,Model,Problem,PartCost,ServiceCost,Status,Date\n';
+  records.forEach(r=>{csv+=`"${r.name}","${r.phone}","${r.model}","${r.problem}",${r.part_cost},${r.service_cost},"${r.status}","${r.date}"\n`});
+  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='records.csv'; a.click();
+  toast('CSV exported');
+});
+document.getElementById('clear-all').addEventListener('click', ()=>{
+  if(confirm('Clear all records locally and remotely?')){
+    records=[];
+    saveLocal();
+    renderTable();
+    updateSummary();
+    renderCharts();
+    toast('Cleared');
+  }
+});
+</script>
+</body>
+</html>
